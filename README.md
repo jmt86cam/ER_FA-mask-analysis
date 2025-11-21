@@ -75,3 +75,8 @@ Binary masks should be generated (e.g. in FIJI) and stored as TIF files. Each fi
 
 The Jupyter notebook produces csv files which are loaded into R using the R script. Packages are listed at the start of the script. Load csv files in and use the plotting functions to produce different outputs.
 
+
+\### data folder
+
+Some example masks for input into the notebook and csv files that are the output fro the notebook and input into R are provided.
+
