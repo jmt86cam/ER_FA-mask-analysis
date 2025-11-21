@@ -269,6 +269,45 @@ Superplot_CellMeanStDev_Stat <- function(Data, y_var, Labels, Yaxis_Max, Yaxis_M
   print(Plot)
 }
 
+
+Superplot_CellMeanStDev_ANOVA <- function(Data, y_var, Labels, Yaxis_Max, Yaxis_Min, Yaxis_step){
+  # Subset the data based on the y_var
+  CellMeanStDev <- Data %>%
+    select(Condition, Date, Name, {{y_var}})
+  
+  CellMeanStDev <- CellMeanStDev %>%
+    group_by(Name, Condition) %>%
+    summarize(
+      Date = first(Date),
+      mean_var = mean({{y_var}}),
+      stdev_var = sd({{y_var}}),
+      sem_var = stdev_var / sqrt(n())
+    )
+  
+  ReplicateAverages <- CellMeanStDev %>% group_by(Condition, Date) %>% summarise_each(list(mean))
+  
+  Plot <- ggplot(CellMeanStDev, aes(x = Condition, y = mean_var)) +
+    geom_point(aes(color = Date), alpha = 0.5, position = position_dodge2(width = 0.5, padding = 0.1), size = 3) +
+    #geom_errorbar(aes(ymin = mean_var - stdev_var, ymax = mean_var + stdev_var, color = Date), alpha = 0.5, width = 0.5, position = position_dodge2(width = 0.5, padding = 0.1)) +
+    stat_summary(fun="mean", geom="crossbar", width=0.5, color = "black") + 
+    geom_point(data=ReplicateAverages, aes(color = factor(Date)), position = position_dodge2(width = 0.25, padding = 0.1), alpha = 0.9, size=5) +
+    geom_point(data=ReplicateAverages, size=5, color="black", position = position_dodge2(width = 0.25, padding = 0.1), shape = 1) +
+    labs(title = Labels[[1]], x = Labels[[2]], y = Labels[[3]]) +
+    theme_jmt() + theme(legend.position="none") + scale_colour_brewer(palette = "Set2") +
+    scale_y_continuous(limits = c(Yaxis_Min, Yaxis_Max), breaks = seq(Yaxis_Min, Yaxis_Max, Yaxis_step))
+  
+  # Run one-way ANOVA
+  fit <- aov(mean_var ~ Condition, data = ReplicateAverages)
+  print(summary(fit))   # ANOVA table
+  print(shapiro.test(residuals(fit)))
+  print(leveneTest(mean_var ~ Condition, data = ReplicateAverages))
+  
+  # Tukey’s HSD posthoc
+  tukey_res <- TukeyHSD(fit)
+  print(tukey_res)
+  
+  print(Plot)
+}
 #### end ####
 
 
@@ -282,10 +321,10 @@ select_dates_df <- subset(MeanCellData, Date %in% keep_values)
 
 ## Compare the areas of the cells
 Labs <- c(title = "Mean cell area", x = "", y = expression(paste("Cell area (", mu, "m"^2, ")")))
-Superplot_CellMeanStDev_Stat(MeanCellData, Cell.area, Labs, 4000, 0, 500)
+Superplot_CellMeanStDev_Stat(MeanCellData, Cell_Area, Labs, 4000, 0, 500)
 ggsave(paste("CellMeanStDev_Stat of Crossbar of Cell areas.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, Cell.area, Labs, 4000, 0, 500)
+Superplot_CellMeanStDev_ANOVA(MeanCellData, Cell_Area, Labs, 4000, 0, 500)
 ggsave(paste("CellMeanStDev of Crossbar of Cell areas.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 
