@@ -9,13 +9,15 @@ install.packages("dplyr")
 install.packages("ggplot2")
 install.packages("ggsignif")
 install.packages("ggpubr")
-install.packages("ggbeeswarm")
+install.packages("gridExtra")
+install.packages("grid")
 
 library(dplyr)
 library(ggplot2)
 library(ggsignif)
 library(ggpubr)
-library(ggbeeswarm)
+library(gridExtra)
+library(grid)
 #### end ####
 
 # Set location of data and where plots will be saved to:
@@ -23,8 +25,8 @@ mainDir <- "C:/Users/jonatmt/OneDrive - Universitetet i Oslo/Desktop/Amalie mask
 #mainDir <- "/Users/amalie/Done"
 setwd(mainDir)
 # Create the path where the data is stored
-DataPath <- "C:/Users/jonatmt/OneDrive - Universitetet i Oslo/Desktop/Amalie masks"
-#DataPath <- "/Users/amalie/Done"
+DataPath <- "C:/Users/jonatmt/OneDrive - Universitetet i Oslo/Desktop/Amalie masks/csv files"
+#DataPath <- "/Users/amalie/Done/csv files"
 
 # Set the pixel size and focal adhesion sizes
 pixel_length_x <- 0.10300000916700082
@@ -38,6 +40,9 @@ x_axis_order = c("Scr-control", "control", "WT-BFP", "L24Q-BFP")
 
 #### Read in the data and keep focal adhesion data ####
 MeanPixelLength <- (pixel_length_x+pixel_length_y)/2
+Cell_Areas <- read.csv(paste(mainDir,"Cell_Area_results.csv", sep ="/"))
+#Cell_Areas$Name <- sub("^[^-]*-", "", Cell_Areas$Name)
+Cell_Areas$Filename <- sub("\\.tif$", "_NoERsheets.csv", Cell_Areas$Filename)
 ## Read in all the csv files and store in a list of dataframes
 AllRawData <- list()
 # Find all csv files within the DataPath directory
@@ -63,6 +68,21 @@ for (i in 1:length(FilePaths)){
   df$feret_diameter_max <- df$feret_diameter_max*MeanPixelLength
   df$perimeter <- df$perimeter*MeanPixelLength
   df$perimeter_crofton <- df$perimeter*MeanPixelLength
+  
+  # Get the matching name (remove extension from filename)
+  #file_base_name <- tools::file_path_sans_ext(Files[i])
+  
+  # Find the matching Cell_Area value
+  cell_area_value <- Cell_Areas$Area[Cell_Areas$Filename == Files[i]]
+  
+  # If found, add it as a new column to the df
+  if (length(cell_area_value) == 1) {
+    df$Cell_Area <- cell_area_value
+  } else {
+    df$Cell_Area <- NA  # Or handle mismatches however you prefer
+    warning(paste("No matching Cell_Area found for:", file_base_name))
+  }
+  
   # Assign data to the raw data list
   AllRawData[[i]] <- df
   # Name each dataframe in the list after the csv file it came from
@@ -244,58 +264,52 @@ Superplot_CellMeanStDev_Stat <- function(Data, y_var, Labels, Yaxis_Max, Yaxis_M
 
 # Define the dates you want to keep
 keep_values <- c("240321", "240322", "240419", "240426", "250123")  # Replace these with your actual date values
-
 # Subset the MeanCellData to keep only the desired dates
 select_dates_df <- subset(MeanCellData, Date %in% keep_values)
-
 # Check if the data was correctly filtered (optional)
 #print(select_dates_df)
 
 
-Labs <- c(title = "Focal Adhesion areas", x = "", y = expression(paste("Focal Adhesion area (", mu, "m"^2, ")")))
-
-Superplot_CellMeanStDev_Stat(AllFAData, area, Labs, 8, 0, 1)
-ggsave(paste("CellMeanStDev_Stat of AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-
-Superplot_CellMeanStDev_Stat(AllFAData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev_Stat of FA-ER area intersection for AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-Superplot_CellMeanStDev_Stat(MeanCellData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev_Stat of FA-ER area intersection for MeanCellData.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-
-Superplot_CellMeanStDev_Stat(MeanCellData, Cell.area, Labs, 4000, 0, 500)
-ggsave(paste("CellMeanStDev_Stat of Crossbar of Cell areas.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-Superplot_CellMeanStDev_Stat(MeanCellData, area, Labs, 2.5, 0, 0.5)
-ggsave(paste("CellMeanStDev_Stat of Crossbar of Total Focal Adhesion per cell.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-Superplot_CellMeanStDev_Stat(MeanCellData, NumberOfAdhesions, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev_Stat of Number of Focal Adhesion per cell.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-
-
-Labs <- c(title = "Overlap of ER \nwith FAs", x = "", y = "FA-ER area \nintersection (%)")
-Superplot_CellMeanStDev_Stat(AllFAData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev_Stat of FA-ER area intersection for AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(AllFAData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev of FA-ER area intersection for AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-Labs <- c(title = "Cell areas", x = "", y = expression(paste("Cell area (", mu, "m"^2, ")")))
+## Compare the areas of the cells
+Labs <- c(title = "Mean cell area", x = "", y = expression(paste("Cell area (", mu, "m"^2, ")")))
 Superplot_CellMeanStDev_Stat(MeanCellData, Cell.area, Labs, 4000, 0, 500)
 ggsave(paste("CellMeanStDev_Stat of Crossbar of Cell areas.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 Superplot_CellMeanStDev_NoStat(MeanCellData, Cell.area, Labs, 4000, 0, 500)
 ggsave(paste("CellMeanStDev of Crossbar of Cell areas.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+
+## Compare the numbers and areas of the focal adhesions
+Labs <- c(title = "Mean number of FAs \nper cell", x = "", y = "FA number")
+Superplot_CellMeanStDev_Stat(MeanCellData, NumberOfAdhesions, Labs, 100, 0, 20)
+ggsave(paste("CellMeanStDev_Stat of FA number per cell.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+Superplot_CellMeanStDev_NoStat(MeanCellData, NumberOfAdhesions, Labs, 100, 0, 20)
+ggsave(paste("CellMeanStDev of FA number per cell.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+
+Labs <- c(title = "Mean number of FAs \nper 100 µm^2", x = "", y = "FA number (per 100 µm^2)")
+Superplot_CellMeanStDev_Stat(MeanCellData, FAnum_per_100um, Labs, 10, 0, 2)
+ggsave(paste("CellMeanStDev_Stat of FA number per 100um.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+Superplot_CellMeanStDev_NoStat(MeanCellData, FAnum_per_100um, Labs, 10, 0, 2)
+ggsave(paste("CellMeanStDev of FA number per 100um.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+
+Labs <- c(title = "Mean Area of FAs", x = "", y = "FA area (µm^2)")
+Superplot_CellMeanStDev_Stat(MeanCellData, area, Labs, 2, 0, 0.4)
+ggsave(paste("CellMeanStDev_Stat of FA area.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+Superplot_CellMeanStDev_NoStat(MeanCellData, area, Labs, 2, 0, 0.4)
+ggsave(paste("CellMeanStDev of FA area.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+
+Labs <- c(title = "Mean Area of FAs \nper 100 µm^2", x = "", y = "FA area (µm^2)")
+Superplot_CellMeanStDev_Stat(MeanCellData, TotalFAarea_prop_100um, Labs, 10, 0, 2)
+ggsave(paste("CellMeanStDev_Stat of FA area per 100um.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+Superplot_CellMeanStDev_NoStat(MeanCellData, TotalFAarea_prop_100um, Labs, 10, 0, 2)
+ggsave(paste("CellMeanStDev of FA area per 100um.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 
 Labs <- c(title = "Total Focal Adhesion \narea in each cell", x = "", y = expression(paste("Total FA area (", mu, "m"^2, ")")))
@@ -306,6 +320,18 @@ Superplot_CellMeanStDev_NoStat(MeanCellData, TotalFAarea, Labs, 100, 0, 20)
 ggsave(paste("CellMeanStDev of Crossbar of Total Focal Adhesion per cell.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 
+
+
+## Number of FAs that have any kind of contact with the ER
+Labs <- c(title = "Mean number of FAs \nintersecting ER", x = "", y = "FA number")
+Superplot_CellMeanStDev_Stat(MeanCellData, NumFAintersectER, Labs, 50, 0, 10)
+ggsave(paste("CellMeanStDev_Stat of FA number intersecting ER.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+Superplot_CellMeanStDev_NoStat(MeanCellData, NumFAintersectER, Labs, 50, 0, 10)
+ggsave(paste("CellMeanStDev of FA number intersecting ER.jpg"), device = "jpeg", dpi = "retina",
+       width = 12, height = 15, units = "cm")
+
+## The same as previous plot, but prortional to the total number of FAs in the cell
 Labs <- c(title = "Proportion of FAs \nintersecting with ER", x = "", y = "FAs occupied by ER (%)")
 Superplot_CellMeanStDev_Stat(MeanCellData, PercERFAintersection, Labs, 100, 0, 20)
 ggsave(paste("CellMeanStDev_Stat of Proportion of FAs intersecting with ER.jpg"), device = "jpeg", dpi = "retina",
@@ -314,46 +340,287 @@ Superplot_CellMeanStDev_NoStat(MeanCellData, PercERFAintersection, Labs, 100, 0,
 ggsave(paste("CellMeanStDev of Proportion of FAs intersecting with ER.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 
-Labs <- c(title = "Number of FAs \nper 100 µm^2", x = "", y = "FA number (per 100 µm^2)")
-Superplot_CellMeanStDev_Stat(MeanCellData, FAnum_per_100um, Labs, 10, 0, 2)
-ggsave(paste("CellMeanStDev_Stat of FA number per 100um.jpg"), device = "jpeg", dpi = "retina",
+## The area of FAs which also have ER, as a percentage of the area of the FA
+Labs <- c(title = "Area Overlap of ER \nwith FAs", x = "", y = "FA-ER area \nintersection (%)")
+Superplot_CellMeanStDev_Stat(AllFAData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
+ggsave(paste("CellMeanStDev_Stat of FA-ER area intersection for AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, FAnum_per_100um, Labs, 10, 0, 2)
-ggsave(paste("CellMeanStDev of FA number per 100um.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-
-Labs <- c(title = "Area of FAs \nper 100 µm^2", x = "", y = "FA area (µm^2)")
-Superplot_CellMeanStDev_Stat(MeanCellData, TotalFAarea_prop_100um, Labs, 10, 0, 2)
-ggsave(paste("CellMeanStDev_Stat of FA area per 100um.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, TotalFAarea_prop_100um, Labs, 10, 0, 2)
-ggsave(paste("CellMeanStDev of FA area per 100um.jpg"), device = "jpeg", dpi = "retina",
+Superplot_CellMeanStDev_NoStat(AllFAData, ERThresh_intersection_percentage, Labs, 100, 0, 20)
+ggsave(paste("CellMeanStDev of FA-ER area intersection for AllFocalAdhesions.jpg"), device = "jpeg", dpi = "retina",
        width = 12, height = 15, units = "cm")
 
-Labs <- c(title = "Number of FAs \nintersecting ER", x = "", y = "FA number")
-Superplot_CellMeanStDev_Stat(MeanCellData, NumFAintersectER, Labs, 50, 0, 10)
-ggsave(paste("CellMeanStDev_Stat of FA number intersecting ER.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, NumFAintersectER, Labs, 50, 0, 10)
-ggsave(paste("CellMeanStDev of FA number intersecting ER.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
+#### Statistics Tests and Plots ####
+subDir <- "Stats"
+dir.create(file.path(mainDir, subDir), showWarnings = FALSE)
+setwd(file.path(mainDir, subDir))
+rm(subDir)
 
-Labs <- c(title = "Number of FAs \nper cell", x = "", y = "FA number")
-Superplot_CellMeanStDev_Stat(MeanCellData, NumberOfAdhesions, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev_Stat of FA number per cell.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, NumberOfAdhesions, Labs, 100, 0, 20)
-ggsave(paste("CellMeanStDev of FA number per cell.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
+## The first thing we look for is normality of the data. Note that anything with
+## a sample size greater than 30 can be considered normal because of the central
+## limit theorem.
 
-Labs <- c(title = "Area of FAs", x = "", y = "FA area (µm^2)")
-Superplot_CellMeanStDev_Stat(MeanCellData, area, Labs, 2, 0, 0.4)
-ggsave(paste("CellMeanStDev_Stat of FA area.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
-Superplot_CellMeanStDev_NoStat(MeanCellData, area, Labs, 2, 0, 0.4)
-ggsave(paste("CellMeanStDev of FA area.jpg"), device = "jpeg", dpi = "retina",
-       width = 12, height = 15, units = "cm")
+## We can do density plots of the band intensities to make sure the data is
+## normally distributed
 
+# This function will create a JPEG file of data density on y axis, it will need
+# a list of data, the name of the variable density we are looking at, something
+# to separate the plots by (e.g. Genotype), and the name of the JPEG file
+NormDis_plots <- function(DataList, VariableDens, SepBy, MainTitle){
+  Plots <- list()
+  for (p in 1:length(DataList)) {
+    df <- DataList[[p]]
+    Plot <- ggdensity(df, x = VariableDens, facet.by = SepBy)
+    Plots[[p]] <- Plot
+    rm(Plot)
+  }
+  ggsave(paste(MainTitle,".jpg"), arrangeGrob(grobs = Plots, ncol = 2),
+         device = "jpeg", dpi = "retina", width = 24,
+         height = 9*ceiling(length(Plots)/2), units = "cm")
+  rm(Plots)
+}
 
+NormDis_plots(MeanCellData, "PercERFAintersection", "Condition","Normal distribution of Proportion of FAs intersecting with ER")
 
+## A quantile-quantile plot can also be used to check for normal distribution
+## the data should align with the 45 degree line if it is normal.
 
+# This function will create a JPEG file of QQ plots with sample on y axis, it will need
+# a list of data, the name of the variable we are looking at, something
+# to separate the plots by (e.g. Genotype), and the name of the JPEG file
+QQ_plots <- function(DataList, VariableDens, SepBy, MainTitle){
+  Plots <- list()
+  for (p in 1:length(DataList)) {
+    df <- DataList[[p]]
+    Plot <- ggqqplot(df, x = VariableDens, facet.by = SepBy)
+    Plots[[p]] <- Plot
+    rm(Plot)
+  }
+  ggsave(paste(MainTitle,".jpg"), arrangeGrob(grobs = Plots, ncol = 2),
+         device = "jpeg", dpi = "retina", width = 24,
+         height = 9*ceiling(length(Plots)/2), units = "cm")
+  rm(Plots)
+}
+
+QQ_plots(MeanCellData, "PercERFAintersection", "Condition","Normal distribution of Proportion of FAs intersecting with ER")
+
+Summary_plots_by_condition_date <- function(df, MainTitlePrefix) {
+  # Ensure Date is treated as a factor
+  df$Date <- as.factor(df$Date)
+  
+  # Identify variables to plot
+  variableCols <- names(df)[sapply(df, is.numeric) & !(names(df) %in% c("Date", "Condition", "Name"))]
+  
+  # Unique values for layout
+  Dates <- unique(df$Date)
+  Conditions <- unique(df$Condition)
+  n_rows <- length(Dates)
+  n_cols <- length(Conditions)
+  
+  # Plot types and file suffixes
+  plot_types <- c("QQ", "Density", "Boxplot")
+  
+  for (plot_type in plot_types) {
+    pdf_filename <- paste0(MainTitlePrefix, "_", plot_type, ".pdf")
+    pdf(pdf_filename, width = n_cols * 4, height = n_rows * 3)
+    
+    for (var in variableCols) {
+      Plots <- list()
+      
+      for (d in seq_along(Dates)) {
+        for (c in seq_along(Conditions)) {
+          subset_df <- df %>%
+            filter(Date == Dates[d], Condition == Conditions[c])
+          
+          plot_title <- paste("Date:", Dates[d], "| Condition:", Conditions[c])
+          
+          if (nrow(subset_df) >= 3) {
+            if (plot_type == "QQ") {
+              p <- ggqqplot(subset_df, x = var) +
+                ggtitle(plot_title) +
+                theme_minimal()
+            } else if (plot_type == "Density") {
+              p <- ggplot(subset_df, aes_string(x = var)) +
+                geom_density(fill = "skyblue", alpha = 0.5) +
+                theme_minimal() +
+                ggtitle(plot_title)
+            } else if (plot_type == "Boxplot") {
+              p <- ggplot(subset_df, aes_string(x = "Condition", y = var)) +
+                geom_boxplot(fill = "tomato", alpha = 0.6) +
+                theme_minimal() +
+                ggtitle(plot_title)
+            }
+          } else {
+            p <- ggplot() + 
+              theme_void() + 
+              ggtitle(paste(plot_title, "\n(Insufficient Data)"))
+          }
+          
+          Plots[[length(Plots)+1]] <- p
+        }
+      }
+      
+      # Combine and title each page
+      grid_title <- textGrob(var, gp = gpar(fontsize = 16, fontface = "bold"))
+      arranged <- arrangeGrob(grobs = Plots, ncol = n_cols, top = grid_title)
+      grid.draw(arranged)
+    }
+    
+    dev.off()
+  }
+}
+Summary_plots_by_condition_date(MeanCellData, "SummaryPlots")
+
+## Perform the Shapiro-Wilk test of normality on samples. In this test the null
+## hypothesis is that the data is normal and therefore if the p value <0.05 the 
+## data should be considered to NOT be normal. The test works best on small sample
+## sizes and should be considered alongside the graphs.
+
+# This function will create a csv file with some summary statistics for a list
+# including the Shapiro value. It also creates a list of these summaries for
+# viewing in R.
+
+DataStatSumTest <- function(DataFrame, Filename) {
+  # Split the dataframe by unique Date values
+  DataList <- split(DataFrame, DataFrame$Date)
+  
+  # Set columns to summarise (excluding metadata)
+  Columns <- setdiff(names(DataFrame), c("Name", "Condition", "Date"))
+  
+  OutputList <- list()
+  
+  for (p in 1:length(DataList)) {
+    df <- na.omit(DataList[[p]])
+    dfStatistics <- data.frame()
+    
+    for (col in Columns) {
+      for (g in unique(df$Condition)) {
+        Testdf <- dplyr::filter(df, Condition == g)
+        values <- Testdf[[col]]
+        
+        MeanValue <- mean(values)
+        MedianValue <- median(values)
+        VarValue <- var(values)
+        StandardDeviation <- sd(values)
+        StandardError <- StandardDeviation / sqrt(length(values))
+        result <- shapiro.test(values)
+        SWpvalue <- result[["p.value"]]
+        OneSampleT <- t.test(values, mu = 1)
+        OneSamplep <- OneSampleT[["p.value"]]
+        
+        StatsResults <- data.frame(
+          Condition = g,
+          IntensityColumn = col,
+          Mean = MeanValue,
+          Median = MedianValue,
+          Variance = VarValue,
+          `Standard Deviation` = StandardDeviation,
+          `Standard Error` = StandardError,
+          `Shapiro-Wilk p-value` = SWpvalue,
+          `One sample T-test p value` = OneSamplep
+        )
+        
+        dfStatistics <- rbind(dfStatistics, StatsResults)
+      }
+    }
+    
+    OutputList[[p]] <- dfStatistics
+    names(OutputList)[p] <- names(DataList)[p]
+  }
+  
+  SaveResult <- do.call(rbind, OutputList)
+  write.csv(SaveResult, file = paste(Filename, ".csv", sep = ""), row.names = FALSE)
+  return(OutputList)
+}
+
+SumMeanCellData <- DataStatSumTest(MeanCellData,"Summary of MeanCellData")
+
+## Finally we want to generate a set of p-values for the data which can be checked for
+## significance and compared to the summaries generated above to know which is most
+## relevant. For normal data with equal variance it is the t test, unequal variance use
+## the Welch's t test. If the data is nonparametric (a.k.a. not normal), then it is
+## the Mann-Whitney test.
+
+# Effect size functions
+cohen_d <- function(x, y) {
+  pooled_sd <- sqrt(((length(x) - 1) * sd(x)^2 + (length(y) - 1) * sd(y)^2) / (length(x) + length(y) - 2))
+  return(abs(mean(x) - mean(y)) / pooled_sd)
+}
+
+cliffs_delta <- function(x, y) {
+  n1 <- length(x)
+  n2 <- length(y)
+  rank_diff <- sum(outer(x, y, FUN = ">")) - sum(outer(x, y, FUN = "<"))
+  return(rank_diff / (n1 * n2))
+}
+
+ConditionStatsTests <- function(DataFrame, Filename) {
+  # Split the dataframe by unique Date values
+  DataList <- split(DataFrame, DataFrame$Date)
+  
+  # Set columns to summarise (excluding metadata)
+  Columns <- setdiff(names(DataFrame), c("Name", "Condition", "Date"))
+  
+  dfStatistics <- data.frame()
+  
+  for (p in 1:length(DataList)) {
+    df <- na.omit(DataList[[p]])
+    AllConditions <- unique(df$Condition)
+    DataLabel <- names(DataList)[p]
+    
+    if (length(AllConditions) < 2) next  # Skip if not enough groups
+    
+    conditionPairs <- combn(AllConditions, 2, simplify = FALSE)
+    
+    for (Col in Columns) {
+      for (pair in conditionPairs) {
+        cond1 <- pair[1]
+        cond2 <- pair[2]
+        
+        df1 <- dplyr::filter(df, Condition == cond1)
+        df2 <- dplyr::filter(df, Condition == cond2)
+        
+        values1 <- df1[[Col]]
+        values2 <- df2[[Col]]
+        
+        n1 <- length(values1)
+        n2 <- length(values2)
+        
+        if (n1 < 2 | n2 < 2) next  # Skip if not enough data
+        
+        # Statistical tests with error handling
+        StudentT <- tryCatch(t.test(values1, values2, var.equal = TRUE)$p.value, error = function(e) NA)
+        WelchT <- tryCatch(t.test(values1, values2, var.equal = FALSE)$p.value, error = function(e) NA)
+        MannWhitney <- tryCatch(wilcox.test(values1, values2)$p.value, error = function(e) NA)
+        
+        # Effect sizes
+        cohen_d_val <- cohen_d(values1, values2)
+        cliffs_delta_val <- cliffs_delta(values1, values2)
+        
+        # Combine results
+        SummaryVec <- data.frame(
+          Dataset = DataLabel,
+          ValueColumn = valueCol,
+          Condition1 = cond1,
+          Condition2 = cond2,
+          SampleSize1 = n1,
+          SampleSize2 = n2,
+          StudentT = StudentT,
+          WelchT = WelchT,
+          MannWhitney = MannWhitney,
+          Cohen_d = cohen_d_val,
+          Cliff_delta = cliffs_delta_val
+        )
+        
+        dfStatistics <- rbind(dfStatistics, SummaryVec)
+      }
+    }
+  }
+  
+  write.csv(dfStatistics, file = paste0(Filename, ".csv"), row.names = FALSE)
+  return(dfStatistics)
+}
+
+StatsMeanCellData <- ConditionStatsTests(MeanCellData,"SigStats of MeanCellData")
+
+setwd(mainDir)
+#### end ####
