@@ -11,6 +11,7 @@ install.packages("ggsignif")
 install.packages("ggpubr")
 install.packages("gridExtra")
 install.packages("grid")
+install.packages("lmerTest")
 
 library(dplyr)
 library(ggplot2)
@@ -18,6 +19,7 @@ library(ggsignif)
 library(ggpubr)
 library(gridExtra)
 library(grid)
+library(lmerTest)
 #### end ####
 
 # Set location of data and where plots will be saved to:
@@ -80,8 +82,10 @@ for (i in 1:length(FilePaths)){
     df$Cell_Area <- cell_area_value
   } else {
     df$Cell_Area <- NA  # Or handle mismatches however you prefer
-    warning(paste("No matching Cell_Area found for:", file_base_name))
+    warning(paste("No matching Cell_Area found for:", Files[i]))
   }
+  # Add focal adhesion size proportional to the cell area
+  df$FApropCA <- df$area/df$Cell_Area
   
   # Assign data to the raw data list
   AllRawData[[i]] <- df
@@ -89,7 +93,7 @@ for (i in 1:length(FilePaths)){
   names(AllRawData)[i] <- Files[i]
   rm(df)
 }
-rm(FilePaths, Files, i)
+rm(FilePaths, Files, i, cell_area_value, Cell_Areas)
 
 FARawData <- list()
 for (s in 1:length(AllRawData)) {
@@ -127,10 +131,16 @@ for (s in 1:length(AllRawData)) {
   subset_df <- df[df$area > MinFAsize & df$area < MaxFAsize, ]
   # Count how many FAs are in the cell
   subset_df$NumberOfAdhesions <- nrow(subset_df)
+  # Number of focal adhesions per 100 um
+  subset_df$FAnum_per_100um <- (subset_df$NumberOfAdhesions / subset_df$Cell_Area) * 100
   # Number of FAs which also intersect with ER
   subset_df$NumFAintersectER <- nrow(subset_df[subset_df$ERThresh_num_intersection_areas >= 1, ])
+  # Number of FAs which also intersect with ER per 100 um
+  subset_df$NumFAintersectER_per_100um <- (subset_df$NumFAintersectER / subset_df$Cell_Area) * 100
   # Calculate the sum area of focal adhesions
   subset_df$TotalFAarea <- sum(subset_df$area)
+  # Total FA area per 100 um^2
+  subset_df$TotalFAarea_prop_100um <- (subset_df$TotalFAarea / subset_df$Cell_Area) * 100
   # Convert subset_df to a data frame
   subset_df <- as.data.frame(subset_df)
   # Calculate column means using summarize
@@ -362,46 +372,8 @@ rm(subDir)
 ## We can do density plots of the band intensities to make sure the data is
 ## normally distributed
 
-# This function will create a JPEG file of data density on y axis, it will need
-# a list of data, the name of the variable density we are looking at, something
-# to separate the plots by (e.g. Genotype), and the name of the JPEG file
-NormDis_plots <- function(DataList, VariableDens, SepBy, MainTitle){
-  Plots <- list()
-  for (p in 1:length(DataList)) {
-    df <- DataList[[p]]
-    Plot <- ggdensity(df, x = VariableDens, facet.by = SepBy)
-    Plots[[p]] <- Plot
-    rm(Plot)
-  }
-  ggsave(paste(MainTitle,".jpg"), arrangeGrob(grobs = Plots, ncol = 2),
-         device = "jpeg", dpi = "retina", width = 24,
-         height = 9*ceiling(length(Plots)/2), units = "cm")
-  rm(Plots)
-}
-
-NormDis_plots(MeanCellData, "PercERFAintersection", "Condition","Normal distribution of Proportion of FAs intersecting with ER")
-
 ## A quantile-quantile plot can also be used to check for normal distribution
 ## the data should align with the 45 degree line if it is normal.
-
-# This function will create a JPEG file of QQ plots with sample on y axis, it will need
-# a list of data, the name of the variable we are looking at, something
-# to separate the plots by (e.g. Genotype), and the name of the JPEG file
-QQ_plots <- function(DataList, VariableDens, SepBy, MainTitle){
-  Plots <- list()
-  for (p in 1:length(DataList)) {
-    df <- DataList[[p]]
-    Plot <- ggqqplot(df, x = VariableDens, facet.by = SepBy)
-    Plots[[p]] <- Plot
-    rm(Plot)
-  }
-  ggsave(paste(MainTitle,".jpg"), arrangeGrob(grobs = Plots, ncol = 2),
-         device = "jpeg", dpi = "retina", width = 24,
-         height = 9*ceiling(length(Plots)/2), units = "cm")
-  rm(Plots)
-}
-
-QQ_plots(MeanCellData, "PercERFAintersection", "Condition","Normal distribution of Proportion of FAs intersecting with ER")
 
 Summary_plots_by_condition_date <- function(df, MainTitlePrefix) {
   # Ensure Date is treated as a factor
@@ -462,6 +434,7 @@ Summary_plots_by_condition_date <- function(df, MainTitlePrefix) {
       # Combine and title each page
       grid_title <- textGrob(var, gp = gpar(fontsize = 16, fontface = "bold"))
       arranged <- arrangeGrob(grobs = Plots, ncol = n_cols, top = grid_title)
+      grid.newpage() 
       grid.draw(arranged)
     }
     
@@ -489,23 +462,22 @@ DataStatSumTest <- function(DataFrame, Filename) {
   OutputList <- list()
   
   for (p in 1:length(DataList)) {
-    df <- na.omit(DataList[[p]])
+    df <- DataList[[p]]
     dfStatistics <- data.frame()
     
     for (col in Columns) {
       for (g in unique(df$Condition)) {
         Testdf <- dplyr::filter(df, Condition == g)
-        values <- Testdf[[col]]
+        values <- as.numeric(Testdf[[col]])
         
-        MeanValue <- mean(values)
-        MedianValue <- median(values)
-        VarValue <- var(values)
-        StandardDeviation <- sd(values)
-        StandardError <- StandardDeviation / sqrt(length(values))
-        result <- shapiro.test(values)
-        SWpvalue <- result[["p.value"]]
-        OneSampleT <- t.test(values, mu = 1)
-        OneSamplep <- OneSampleT[["p.value"]]
+        MeanValue <- tryCatch(mean(values), error = function(e) NaN)
+        MedianValue <- tryCatch(median(values), error = function(e) NaN)
+        VarValue <- tryCatch(var(values), error = function(e) NaN)
+        StandardDeviation <- tryCatch(sd(values), error = function(e) NaN)
+        StandardError <- tryCatch(StandardDeviation / sqrt(length(values)), error = function(e) NaN)
+        SWpvalue <- tryCatch(shapiro.test(values)$p.value, error = function(e) NaN)
+        # A One sample t test compares the mean to the mu value. Probably not needed.
+        #OneSamplep <- tryCatch(t.test(values, mu = 1)$p.value, error = function(e) NaN)
         
         StatsResults <- data.frame(
           Condition = g,
@@ -513,10 +485,10 @@ DataStatSumTest <- function(DataFrame, Filename) {
           Mean = MeanValue,
           Median = MedianValue,
           Variance = VarValue,
-          `Standard Deviation` = StandardDeviation,
-          `Standard Error` = StandardError,
-          `Shapiro-Wilk p-value` = SWpvalue,
-          `One sample T-test p value` = OneSamplep
+          Standard_Deviation = StandardDeviation,
+          Standard_Error = StandardError,
+          Shapiro_Wilk_p_value = SWpvalue
+          #`One sample T-test p value` = OneSamplep
         )
         
         dfStatistics <- rbind(dfStatistics, StatsResults)
@@ -554,65 +526,72 @@ cliffs_delta <- function(x, y) {
 }
 
 ConditionStatsTests <- function(DataFrame, Filename) {
-  # Split the dataframe by unique Date values
-  DataList <- split(DataFrame, DataFrame$Date)
-  
-  # Set columns to summarise (excluding metadata)
   Columns <- setdiff(names(DataFrame), c("Name", "Condition", "Date"))
-  
   dfStatistics <- data.frame()
   
-  for (p in 1:length(DataList)) {
-    df <- na.omit(DataList[[p]])
-    AllConditions <- unique(df$Condition)
-    DataLabel <- names(DataList)[p]
+  AllConditions <- unique(DataFrame$Condition)
+  if (length(AllConditions) < 2) {
+    message("Not enough conditions to compare.")
+    return(NULL)
+  }
+  
+  conditionPairs <- combn(AllConditions, 2, simplify = FALSE)
+  
+  for (Col in Columns) {
+    # Step 1: Summarise per-date means
+    Summarised <- DataFrame |>
+      dplyr::group_by(Date, Condition) |>
+      dplyr::summarise(MeanValue = mean(.data[[Col]], na.rm = TRUE), .groups = "drop")
     
-    if (length(AllConditions) < 2) next  # Skip if not enough groups
-    
-    conditionPairs <- combn(AllConditions, 2, simplify = FALSE)
-    
-    for (Col in Columns) {
-      for (pair in conditionPairs) {
-        cond1 <- pair[1]
-        cond2 <- pair[2]
-        
-        df1 <- dplyr::filter(df, Condition == cond1)
-        df2 <- dplyr::filter(df, Condition == cond2)
-        
-        values1 <- df1[[Col]]
-        values2 <- df2[[Col]]
-        
-        n1 <- length(values1)
-        n2 <- length(values2)
-        
-        if (n1 < 2 | n2 < 2) next  # Skip if not enough data
-        
-        # Statistical tests with error handling
-        StudentT <- tryCatch(t.test(values1, values2, var.equal = TRUE)$p.value, error = function(e) NA)
-        WelchT <- tryCatch(t.test(values1, values2, var.equal = FALSE)$p.value, error = function(e) NA)
-        MannWhitney <- tryCatch(wilcox.test(values1, values2)$p.value, error = function(e) NA)
-        
-        # Effect sizes
-        cohen_d_val <- cohen_d(values1, values2)
-        cliffs_delta_val <- cliffs_delta(values1, values2)
-        
-        # Combine results
-        SummaryVec <- data.frame(
-          Dataset = DataLabel,
-          ValueColumn = valueCol,
-          Condition1 = cond1,
-          Condition2 = cond2,
-          SampleSize1 = n1,
-          SampleSize2 = n2,
-          StudentT = StudentT,
-          WelchT = WelchT,
-          MannWhitney = MannWhitney,
-          Cohen_d = cohen_d_val,
-          Cliff_delta = cliffs_delta_val
-        )
-        
-        dfStatistics <- rbind(dfStatistics, SummaryVec)
-      }
+    for (pair in conditionPairs) {
+      cond1 <- pair[1]
+      cond2 <- pair[2]
+      
+      # Filter only the two conditions
+      SubData <- Summarised[Summarised$Condition %in% c(cond1, cond2), ]
+      
+      # Extract per-date means
+      values1 <- SubData$MeanValue[SubData$Condition == cond1]
+      values2 <- SubData$MeanValue[SubData$Condition == cond2]
+      
+      n1 <- length(values1)
+      n2 <- length(values2)
+      nDates <- length(unique(SubData$Date))
+      
+      if (n1 < 2 | n2 < 2 | nDates < 2) next  # Need at least 2 values per group and at least 2 dates
+      
+      # Classic tests on per-date means
+      StudentT <- tryCatch(t.test(values1, values2, var.equal = TRUE)$p.value, error = function(e) NA)
+      WelchT <- tryCatch(t.test(values1, values2, var.equal = FALSE)$p.value, error = function(e) NA)
+      MannWhitney <- tryCatch(wilcox.test(values1, values2)$p.value, error = function(e) NA)
+      cohen_d_val <- tryCatch(cohen_d(values1, values2), error = function(e) NA)
+      cliffs_delta_val <- tryCatch(cliffs_delta(values1, values2), error = function(e) NA)
+      
+      # Mixed effects model: Use original (non-averaged) data for this
+      LMM_Data <- DataFrame[DataFrame$Condition %in% c(cond1, cond2), ]
+      LMM <- tryCatch(
+        lmerTest::lmer(as.formula(paste(Col, "~ Condition + (1 | Date)")), data = LMM_Data),
+        error = function(e) NA
+      )
+      LMM_p <- tryCatch(coef(summary(LMM))[2, "Pr(>|t|)"], error = function(e) NA)
+      
+      # Store results
+      SummaryVec <- data.frame(
+        ValueColumn = Col,
+        Condition1 = cond1,
+        Condition2 = cond2,
+        SampleSize1 = n1,
+        SampleSize2 = n2,
+        NumDates = nDates,
+        StudentT = StudentT,
+        WelchT = WelchT,
+        MannWhitney = MannWhitney,
+        LMM_p = LMM_p,
+        Cohen_d = cohen_d_val,
+        Cliff_delta = cliffs_delta_val
+      )
+      
+      dfStatistics <- rbind(dfStatistics, SummaryVec)
     }
   }
   
