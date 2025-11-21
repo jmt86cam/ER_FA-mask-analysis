@@ -1,0 +1,36 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Output files from notebooks (optional, uncomment if needed)
+ *.csv
+ *.tiff
+
+# Conda / Mamba environments
+env/
+*.env
+*.conda
+.conda-env/
+
+# R-related files
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
