@@ -23,12 +23,10 @@ library(lmerTest)
 #### end ####
 
 # Set location of data and where plots will be saved to:
-mainDir <- "C:/Users/jonatmt/OneDrive - Universitetet i Oslo/Desktop/Amalie masks"
-#mainDir <- "/Users/amalie/Done"
+mainDir <- "C:/Users/"
 setwd(mainDir)
 # Create the path where the data is stored
-DataPath <- "C:/Users/jonatmt/OneDrive - Universitetet i Oslo/Desktop/Amalie masks/csv files"
-#DataPath <- "/Users/amalie/Done/csv files"
+DataPath <- "C:/Users/"
 
 # Set the pixel size and focal adhesion sizes
 pixel_length_x <- 0.10300000916700082
@@ -38,7 +36,7 @@ MinFAsize <- 0.15
 MaxFAsize <- 15
 
 # Set the order of conditions along the x axis for plots
-x_axis_order = c("Scr-control", "control", "WT-BFP", "L24Q-BFP")
+x_axis_order = c("CondA", "CondB", "CondC", "CondD")
 
 #### Read in the data and keep focal adhesion data ####
 MeanPixelLength <- (pixel_length_x+pixel_length_y)/2
